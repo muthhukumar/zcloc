@@ -5,10 +5,20 @@ const std = @import("std");
 const print = std.debug.print;
 const parseInt = std.fmt.parseInt;
 
+const FileStat = struct {
+    ex: []const u8,
+    path: []const u8,
+};
+
+const FilesStats = std.MultiArrayList(FileStat);
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    var files = FilesStats{};
+    defer files.deinit(allocator);
 
     const dir = readArgs(allocator) catch {
         std.debug.panic("Failed to read args", .{});
@@ -19,9 +29,19 @@ pub fn main() !void {
     }
 
     var lines: i64 = 0;
-    var files_count: i64 = 0;
 
-    try readDirRecursively(dir, allocator, &lines, &files_count);
+    try readDirRecursively(dir, allocator, &files);
+
+    print("Files found: {d}\n", .{files.len});
+
+    for (files.items(.path), files.items(.ex)) |path, ex| {
+        lines += try readFileLines(path, allocator);
+
+        print("{d}\r", .{lines});
+
+        allocator.free(path);
+        allocator.free(ex);
+    }
 
     print("Number of lines {d}\n", .{lines});
 }
@@ -39,7 +59,7 @@ fn readArgs(allocator: std.mem.Allocator) !?[]const u8 {
     return undefined;
 }
 
-fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, lines: *i64, files_count: *i64) !void {
+fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, files_stats: *FilesStats) !void {
     var currDir = try std.fs.cwd().openDir(dirPath, .{ .iterate = true });
     defer currDir.close();
 
@@ -55,15 +75,17 @@ fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, lines: 
         const stat = try std.fs.cwd().statFile(file_name);
 
         if (stat.kind == .directory) {
-            try readDirRecursively(file_name, allocator, lines, files_count);
+            try readDirRecursively(file_name, allocator, files_stats);
         } else if (stat.kind == .file) {
-            const count = try readFileLines(file_name, allocator);
+            const extension = std.fs.path.extension(file_name);
 
-            // print("{d}\n", .{files_count.*});
+            const path = try allocator.dupe(u8, file_name);
+            errdefer allocator.free(path);
 
-            files_count.* += 1;
+            const ex = try allocator.dupe(u8, extension);
+            errdefer allocator.free(ex);
 
-            lines.* += count[0];
+            try files_stats.append(allocator, .{ .ex = ex, .path = path });
         } else {
             // TODO: handle this
             continue;
@@ -71,7 +93,7 @@ fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, lines: 
     }
 }
 
-fn readFileLines(file_path: []const u8, allocator: std.mem.Allocator) !struct { i64, u64 } {
+fn readFileLines(file_path: []const u8, allocator: std.mem.Allocator) !i64 {
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
@@ -81,16 +103,15 @@ fn readFileLines(file_path: []const u8, allocator: std.mem.Allocator) !struct { 
     defer allocator.free(buffer);
 
     var count: i64 = 0;
-    var chars: u64 = 0;
 
     while (file.reader().readUntilDelimiterOrEof(buffer, '\n') catch {
-        return .{ 0, 0 };
+        return 0;
     }) |line| {
+        _ = line;
         count += 1;
-        chars += line.len;
     }
 
-    return .{ count, chars };
+    return count;
 }
 
 // const extension = std.fs.path.extension(file_path);
