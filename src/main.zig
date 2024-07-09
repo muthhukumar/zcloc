@@ -3,45 +3,32 @@ const print = std.debug.print;
 const parseInt = std.fmt.parseInt;
 
 pub fn main() !void {
+    const result = try read_file_lines("./output.txt");
+
+    print("num of lines in {}{}\n", .{ result[0], result[1] });
+}
+
+fn read_file_lines(file_path: []const u8) !struct { i64, u64 } {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const file = try std.fs.cwd().openFile("./output.txt", .{});
+    const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
     const file_size = (try file.stat()).size;
-    const buffer = try allocator.alloc(u8, file_size);
-
-    print("{}", .{file_size});
-
+    const buffer = try allocator.alloc(u8, file_size + 1);
     defer allocator.free(buffer);
 
     var count: i64 = 0;
-    var len: usize = 0;
+    var chars: u64 = 0;
 
     while (try file.reader().readUntilDelimiterOrEof(buffer, '\n')) |line| {
-        print("{s}\n", .{line});
-        len += line.len;
         count += 1;
+        chars += line.len;
+
+        print("{s}\n", .{line});
     }
 
-    print("number of lines = {}\n length = {}\n", .{ count, len });
+    return .{ count, chars };
 }
-
-fn count_lines(str: []const u8) i64 {
-    var count: i64 = 0;
-
-    var idx: usize = 0;
-
-    while (idx < str.len) : (idx += 1) {
-        const val = str[idx];
-
-        if (val == '\n') {
-            count += 1;
-        }
-    }
-
-    return count;
-}
-test "simple test" {}
