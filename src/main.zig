@@ -12,7 +12,9 @@ pub fn main() !void {
 
     const file_size = (try file.stat()).size;
     const buffer = try allocator.alloc(u8, file_size);
+
     print("{}", .{file_size});
+
     defer allocator.free(buffer);
 
     var count: i64 = 0;
