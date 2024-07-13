@@ -42,8 +42,8 @@ pub fn main() !void {
         files += iter.value_ptr.len;
 
         for (iter.value_ptr.items(.ex), iter.value_ptr.items(.path)) |ex, path| {
-            // _ = ex;
-            std.debug.print("{s} | {s}\n", .{ ex, path });
+            _ = ex;
+            // std.debug.print("{s} | {s}\n", .{ ex, path });
 
             lines += try readFileLines(path, allocator);
             print("Lines: {d}\r", .{lines});
@@ -74,11 +74,11 @@ fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, files_s
     var iterator = currDir.iterate();
 
     while (try iterator.next()) |entry| {
+        // Note: This memory is created by us and moved to the array list each time. And we're using Arena allocator so we don't have to free this memory separately.
         const file_name = std.fmt.allocPrint(allocator, "{s}/{s}", .{ dirPath, entry.name }) catch {
             // TODO: fix this later
             continue;
         };
-        defer allocator.free(file_name);
 
         const stat = try std.fs.cwd().statFile(file_name);
 
@@ -90,10 +90,7 @@ fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, files_s
                 // Ignore the files that don't have extensions
                 if (std.mem.eql(u8, extension, "")) continue;
 
-                const file_name_cpy = try allocator.dupe(u8, file_name);
-                errdefer allocator.free(file_name_cpy);
-
-                try add_file_to_hashmap(allocator, files_stats_hashmap, extension, .{ .ex = extension, .path = file_name_cpy });
+                try add_file_to_hashmap(allocator, files_stats_hashmap, extension, .{ .ex = extension, .path = file_name });
             },
             else => {
                 continue;
@@ -103,14 +100,16 @@ fn readDirRecursively(dirPath: []const u8, allocator: std.mem.Allocator, files_s
 }
 
 fn add_file_to_hashmap(allocator: std.mem.Allocator, file_stats_hashmap: *FilesStatHashMap, extension: []const u8, file_stat: FileStat) !void {
-    const ex = try allocator.dupe(u8, extension);
-
-    const entry = file_stats_hashmap.getPtr(ex);
+    const entry = file_stats_hashmap.getPtr(extension);
 
     if (entry) |e| {
         try e.*.append(allocator, file_stat);
     } else {
-        try file_stats_hashmap.put(ex, FilesStatList{});
+        var file_list = FilesStatList{};
+
+        try file_list.append(allocator, file_stat);
+
+        try file_stats_hashmap.put(extension, file_list);
     }
 }
 
